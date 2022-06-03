@@ -66,12 +66,12 @@ typedef struct icmp_pkt
 //--------------------------------------------------
 typedef struct USART_prop
 {
-	uint8_t usart_buf[20];
+	uint8_t usart_buf[25];
 	uint8_t usart_cnt;
 	uint8_t is_ip;
 } USART_prop_ptr;
 //--------------------------------------------------
-#define be16toword(a) ((((a)>>8)&0xff)|(((a)<<8)&0xff00)) //convert big endian to little endian
+#define be16toword(a) ((((a)>>8)&0xff)|(((a)<<8)&0xff00)) //convert little endian to big endian
 //--------------------------------------------------
 #define ETH_ARP be16toword(0x0806)
 #define ETH_IP be16toword(0x0800)
@@ -90,6 +90,7 @@ typedef struct USART_prop
 //--------------------------------------------------
 void net_ini(void);
 void net_poll(void);
+void net_cmd(void);
 void eth_send(enc28j60_frame_ptr *frame, uint16_t len);
 void UART1_RxCpltCallback(void);
 void TIM_PeriodElapsedCallback(void);

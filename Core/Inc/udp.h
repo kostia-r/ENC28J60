@@ -15,6 +15,8 @@
 #include "enc28j60.h"
 #include "net.h"
 //--------------------------------------------------
+#define LOCAL_PORT 333
+//--------------------------------------------------
 typedef struct udp_pkt
 {
 	uint16_t port_src; //sender port
@@ -23,5 +25,7 @@ typedef struct udp_pkt
 	uint16_t cs; //header checksum
 	uint8_t data[]; //data
 } udp_pkt_ptr;
+//--------------------------------------------------
+uint8_t udp_send(uint8_t *ip_addr, uint16_t port);
 //--------------------------------------------------
 #endif /* UDP_H_ */

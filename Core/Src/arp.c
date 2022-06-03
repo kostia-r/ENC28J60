@@ -12,6 +12,7 @@ extern uint8_t macaddr[6];
 extern char str1[60];
 extern uint32_t clock_cnt; //second counter
 extern uint8_t net_buf[ENC28J60_MAXFRAME];
+extern USART_prop_ptr usartprop;
 uint8_t macbroadcast[6] = MAC_BROADCAST;
 uint8_t macnull[6] = MAC_NULL;
 arp_record_ptr arp_rec[5];
@@ -29,19 +30,6 @@ uint8_t arp_read(enc28j60_frame_ptr *frame, uint16_t len)
 			{
 				if (msg->op == ARP_REQUEST)
 				{
-					//sprintf(str1, "\r\nrequest\r\nmac_src %02X:%02X:%02X:%02X:%02X:%02X\r\n", msg->macaddr_src[0],
-					//		msg->macaddr_src[1], msg->macaddr_src[2], msg->macaddr_src[3], msg->macaddr_src[4],
-					//		msg->macaddr_src[5]);
-					//HAL_UART_Transmit(&huart1, (uint8_t*) str1, strlen(str1), 0x1000);
-					//sprintf(str1, "ip_src %d.%d.%d.%d\r\n", msg->ipaddr_src[0], msg->ipaddr_src[1], msg->ipaddr_src[2],
-					//		msg->ipaddr_src[3]);
-					//HAL_UART_Transmit(&huart1, (uint8_t*) str1, strlen(str1), 0x1000);
-					//sprintf(str1, "mac_dst %02X:%02X:%02X:%02X:%02X:%02X\r\n", msg->macaddr_dst[0], msg->macaddr_dst[1],
-					//		msg->macaddr_dst[2], msg->macaddr_dst[3], msg->macaddr_dst[4], msg->macaddr_dst[5]);
-					//HAL_UART_Transmit(&huart1, (uint8_t*) str1, strlen(str1), 0x1000);
-					//sprintf(str1, "ip_dst %d.%d.%d.%d\r\n", msg->ipaddr_dst[0], msg->ipaddr_dst[1], msg->ipaddr_dst[2],
-					//		msg->ipaddr_dst[3]);
-					//HAL_UART_Transmit(&huart1, (uint8_t*) str1, strlen(str1), 0x1000);
 					res = 1;
 				}
 				else if (msg->op == ARP_REPLY)
@@ -75,6 +63,7 @@ void arp_send(enc28j60_frame_ptr *frame)
 	memcpy(msg->macaddr_src, macaddr, 6);
 	memcpy(msg->ipaddr_dst, msg->ipaddr_src, 4);
 	memcpy(msg->ipaddr_src, ipaddr, 4);
+	memcpy(frame->addr_dest, frame->addr_src, 6);
 	eth_send(frame, sizeof(arp_msg_ptr));
 
 	sprintf(str1, "%02X:%02X:%02X:%02X:%02X:%02X(%d.%d.%d.%d)-", frame->addr_dest[0], frame->addr_dest[1],
@@ -90,14 +79,16 @@ void arp_send(enc28j60_frame_ptr *frame)
 //-----------------------------------------------
 uint8_t arp_request(uint8_t *ip_addr)
 {
-	uint8_t i;
-	for (i = 0; i < 5; i++)
+	uint8_t i, j;
+	enc28j60_frame_ptr *frame = (void*) net_buf;
+
+	for (j = 0; j < 5; j++)
 	{
-		if ((clock_cnt - arp_rec[i].sec) > 43200)
+		if ((clock_cnt - arp_rec[j].sec) > 43200)
 		{
-			memset(arp_rec + (sizeof(arp_record_ptr) * i), 0, sizeof(arp_record_ptr));
+			memset(arp_rec + (sizeof(arp_record_ptr) * j), 0, sizeof(arp_record_ptr));
 		}
-		if (!memcmp(arp_rec[i].ipaddr, ip_addr, 4))
+		if (!memcmp(arp_rec[j].ipaddr, ip_addr, 4))
 		{
 			for (i = 0; i < 5; i++)
 			{
@@ -107,10 +98,14 @@ uint8_t arp_request(uint8_t *ip_addr)
 						arp_rec[i].macaddr[5], (unsigned long) arp_rec[i].sec);
 				HAL_UART_Transmit(&huart1, (uint8_t*) str1, strlen(str1), 0x1000);
 			}
+			memcpy(frame->addr_dest, arp_rec[j].macaddr, 6);
+			if (usartprop.is_ip == 3)
+			{
+				net_cmd();
+			}
 			return 0;
 		}
 	}
-	enc28j60_frame_ptr *frame = (void*) net_buf;
 	arp_msg_ptr *msg = (void*) (frame->data);
 	msg->net_tp = ARP_ETH;
 	msg->proto_tp = ARP_IP;

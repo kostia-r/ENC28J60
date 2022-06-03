@@ -79,7 +79,6 @@ uint8_t ip_read(enc28j60_frame_ptr *frame, uint16_t len)
 			udp_read(frame, len);
 		}
 	}
-
 	return res;
 }
 
@@ -104,28 +103,54 @@ uint8_t ip_send(enc28j60_frame_ptr *frame, uint16_t len)
 }
 
 //-----------------------------------------------
+uint16_t port_extract(char *ip_str, uint8_t len)
+{
+	uint16_t port = 0;
+	int ch1 = ':';
+	char *ss1;
+	uint8_t offset = 0;
+	ss1 = strchr(ip_str, ch1);
+	offset = ss1 - ip_str + 1;
+	ip_str += offset;
+	port = atoi(ip_str);
+	return port;
+}
+//-----------------------------------------------
 //Convert string IP-value to 32-bits integer
-void ip_extract(char *ip_str, uint8_t len, uint8_t *ipextr)
+void ip_extract(char *ip_str, uint8_t len, uint8_t *ipextp)
 {
 	uint8_t offset = 0;
 	uint8_t i;
 	char ss2[5] = { 0 };
 	char *ss1;
-	int ch = '.';
+	int ch1 = '.';
+	int ch2 = ':';
 
 	for (i = 0; i < 3; i++)
 	{
-		ss1 = strchr(ip_str, ch);
+		ss1 = strchr(ip_str, ch1);
 		offset = ss1 - ip_str + 1;
 		strncpy(ss2, ip_str, offset);
 		ss2[offset] = 0;
-		ipextr[i] = atoi(ss2);
+		ipextp[i] = atoi(ss2);
 		ip_str += offset;
 		len -= offset;
 	}
+
+	ss1 = strchr(ip_str, ch2);
+
+	if (ss1 != NULL)
+	{
+		offset = ss1 - ip_str + 1;
+		strncpy(ss2, ip_str, offset);
+		ss2[offset] = 0;
+		ipextp[3] = atoi(ss2);
+		return;
+	}
+
 	strncpy(ss2, ip_str, len);
 	ss2[len] = 0;
-	ipextr[3] = atoi(ss2);
+	ipextp[3] = atoi(ss2);
 }
 
 //--------------------------------------------------
@@ -136,11 +161,6 @@ void eth_read(enc28j60_frame_ptr *frame, uint16_t len)
 	{
 		if (frame->type == ETH_ARP)
 		{
-			//sprintf(str1, "%02X:%02X:%02X:%02X:%02X:%02X-%02X:%02X:%02X:%02X:%02X:%02X; %d; arp\r\n",
-			//		frame->addr_src[0], frame->addr_src[1], frame->addr_src[2], frame->addr_src[3], frame->addr_src[4],
-			//		frame->addr_src[5], frame->addr_dest[0], frame->addr_dest[1], frame->addr_dest[2],
-			//		frame->addr_dest[3], frame->addr_dest[4], frame->addr_dest[5], len);
-			//HAL_UART_Transmit(&huart1, (uint8_t*) str1, strlen(str1), 0x1000);
 			res = arp_read(frame, len - sizeof(enc28j60_frame_ptr));
 			if (res == 1)
 			{
@@ -150,14 +170,14 @@ void eth_read(enc28j60_frame_ptr *frame, uint16_t len)
 			{
 				arp_table_fill(frame);
 			}
+			if (usartprop.is_ip == 3) //UDP packet sending status
+			{
+				memcpy(frame->addr_dest, frame->addr_src, 6);
+				net_cmd();
+			}
 		}
 		if (frame->type == ETH_IP)
 		{
-			//sprintf(str1, "%02X:%02X:%02X:%02X:%02X:%02X-%02X:%02X:%02X:%02X:%02X:%02X; %d; ip\r\n", frame->addr_src[0],
-			//		frame->addr_src[1], frame->addr_src[2], frame->addr_src[3], frame->addr_src[4], frame->addr_src[5],
-			//		frame->addr_dest[0], frame->addr_dest[1], frame->addr_dest[2], frame->addr_dest[3],
-			//		frame->addr_dest[4], frame->addr_dest[5], len);
-			//HAL_UART_Transmit(&huart1, (uint8_t*) str1, strlen(str1), 0x1000);
 			ip_read(frame, len - sizeof(ip_pkt_ptr));
 		}
 		else
@@ -175,7 +195,6 @@ void eth_read(enc28j60_frame_ptr *frame, uint16_t len)
 //--------------------------------------------------
 void eth_send(enc28j60_frame_ptr *frame, uint16_t len)
 {
-	memcpy(frame->addr_dest, frame->addr_src, 6);
 	memcpy(frame->addr_src, macaddr, 6);
 	enc28j60_packetSend((void*) frame, len + sizeof(enc28j60_frame_ptr));
 }
@@ -192,30 +211,33 @@ void net_poll(void)
 	{
 		eth_read(frame, len);
 	}
-
-	//if (usartprop.is_ip == 1) //ARP-request sending status
-	//{
-	//	HAL_UART_Transmit(&huart1, usartprop.usart_buf, usartprop.usart_cnt, 0x1000);
-	//	HAL_UART_Transmit(&huart1, (uint8_t*) "\r\n", 2, 0x1000);
-	//	ip_extract((char*) usartprop.usart_buf, usartprop.usart_cnt, ip);
-	//	arp_request(ip);
-	//	usartprop.is_ip = 0;
-	//	usartprop.usart_cnt = 0;
-	//}
 }
 
 //-----------------------------------------------
 void net_cmd(void)
 {
-	uint8_t ip[4] = { 0 };
+	static uint8_t ip[4] = { 0 };
+	static uint16_t port = 0;
+
 	if (usartprop.is_ip == 1)	//ARP request sending status
 	{
-		HAL_UART_Transmit(&huart1, usartprop.usart_buf, usartprop.usart_cnt, 0x1000);
-		HAL_UART_Transmit(&huart1, (uint8_t*) "\r\n", 2, 0x1000);
 		ip_extract((char*) usartprop.usart_buf, usartprop.usart_cnt, ip);
 		arp_request(ip);
 		usartprop.is_ip = 0;
 		usartprop.usart_cnt = 0;
+	}
+	else if (usartprop.is_ip == 2)	//attempt status to send UDP-packet
+	{
+		ip_extract((char*) usartprop.usart_buf, usartprop.usart_cnt, ip);
+		usartprop.is_ip = 3;	//attempt status to send UDP-packet
+		usartprop.usart_cnt = 0;
+		arp_request(ip);	//find out mac-address
+	}
+	else if (usartprop.is_ip == 3)	//attempt status to send UDP-packet
+	{
+		port = port_extract((char*) usartprop.usart_buf, usartprop.usart_cnt);
+		udp_send(ip, port);
+		usartprop.is_ip = 0;
 	}
 }
 
@@ -229,13 +251,11 @@ uint8_t icmp_read(enc28j60_frame_ptr *frame, uint16_t len)
 	//Filter the packet by message length and type - echo request
 	if ((len >= sizeof(icmp_pkt_ptr)) && (icmp_pkt->msg_tp == ICMP_REQ))
 	{
-		//sprintf(str1, "icmp request\r\n");
-		//HAL_UART_Transmit(&huart1, (uint8_t*) str1, strlen(str1), 0x1000);
-
 		icmp_pkt->msg_tp = ICMP_REPLY;
 		icmp_pkt->cs = 0;
 		icmp_pkt->cs = checksum((void*) icmp_pkt, len, 0);
 
+		memcpy(frame->addr_dest, frame->addr_src, 6);
 		ip_send(frame, len + sizeof(ip_pkt_ptr));
 		sprintf(str1, "%d.%d.%d.%d-%d.%d.%d.%d icmp request\r\n", ip_pkt->ipaddr_dst[0], ip_pkt->ipaddr_dst[1],
 				ip_pkt->ipaddr_dst[2], ip_pkt->ipaddr_dst[3], ip_pkt->ipaddr_src[0], ip_pkt->ipaddr_src[1],
@@ -252,13 +272,18 @@ void UART1_RxCpltCallback(void)
 	b = str[0];
 
 	//check if the buffer length is exceeded
-	if (usartprop.usart_cnt > 20)
+	if (usartprop.usart_cnt > 25)
 	{
 		usartprop.usart_cnt = 0;
 	}
 	else if (b == 'a')
 	{
 		usartprop.is_ip = 1; //ARP-request sending status
+		net_cmd();
+	}
+	else if (b == 'u')
+	{
+		usartprop.is_ip = 2; //attempt status to send UDP-packet
 		net_cmd();
 	}
 	else
