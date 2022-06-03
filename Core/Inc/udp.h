@@ -14,8 +14,9 @@
 #include <stdint.h>
 #include "enc28j60.h"
 #include "net.h"
+#include "user_conf.h"
 //--------------------------------------------------
-#define LOCAL_PORT 333
+
 //--------------------------------------------------
 typedef struct udp_pkt
 {

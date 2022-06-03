@@ -11,7 +11,10 @@ extern UART_HandleTypeDef huart1;
 extern uint8_t macaddr[6];
 uint8_t net_buf[ENC28J60_MAXFRAME];
 uint8_t ipaddr[4] = IP_ADDR;
+uint8_t ipgate[4] = IP_GATE;
+uint8_t ipmask[4] = IP_MASK;
 char str1[60] = { 0 };
+uint32_t ping_cnt = 0; //sent ping counter
 extern char str[20];
 uint32_t clock_cnt = 0;
 USART_prop_ptr usartprop;
@@ -21,13 +24,14 @@ void arp_send(enc28j60_frame_ptr *frame);
 void eth_read(enc28j60_frame_ptr *frame, uint16_t len);
 void eth_send(enc28j60_frame_ptr *frame, uint16_t len);
 uint8_t icmp_read(enc28j60_frame_ptr *frame, uint16_t len);
+uint8_t icmp_request(uint8_t *ip_addr);
 //--------------------------------------------------
 void net_ini(void)
 {
 	usartprop.usart_buf[0] = 0;
 	usartprop.usart_cnt = 0;
 	usartprop.is_ip = 0;
-	HAL_UART_Transmit(&huart1, (uint8_t*) "123456\r\n", 8, 0x1000);
+	HAL_UART_Transmit(&huart1, (uint8_t*) "\r\nENC28J60 init\r\n", 8, 0x1000);
 	enc28j60_ini();
 }
 
@@ -170,7 +174,7 @@ void eth_read(enc28j60_frame_ptr *frame, uint16_t len)
 			{
 				arp_table_fill(frame);
 			}
-			if (usartprop.is_ip == 3) //UDP packet sending status
+			if ((usartprop.is_ip == 3) || (usartprop.is_ip == 5)) //UDP or ICMP packet sending status
 			{
 				memcpy(frame->addr_dest, frame->addr_src, 6);
 				net_cmd();
@@ -239,6 +243,18 @@ void net_cmd(void)
 		udp_send(ip, port);
 		usartprop.is_ip = 0;
 	}
+	else if (usartprop.is_ip == 4)	//attempt status to send ICMP-packet
+	{
+		ip_extract((char*) usartprop.usart_buf, usartprop.usart_cnt, ip);
+		usartprop.is_ip = 5;	//attempt status to send ICMP-packet
+		usartprop.usart_cnt = 0;
+		arp_request(ip);	//find out mac-address
+	}
+	else if (usartprop.is_ip == 5)	//sending ICMP-packet status
+	{
+		icmp_request(ip);
+		usartprop.is_ip = 0;
+	}
 }
 
 //--------------------------------------------------
@@ -249,22 +265,72 @@ uint8_t icmp_read(enc28j60_frame_ptr *frame, uint16_t len)
 	icmp_pkt_ptr *icmp_pkt = (void*) (ip_pkt->data);
 
 	//Filter the packet by message length and type - echo request
-	if ((len >= sizeof(icmp_pkt_ptr)) && (icmp_pkt->msg_tp == ICMP_REQ))
+	if (len >= sizeof(icmp_pkt_ptr))
 	{
-		icmp_pkt->msg_tp = ICMP_REPLY;
-		icmp_pkt->cs = 0;
-		icmp_pkt->cs = checksum((void*) icmp_pkt, len, 0);
+		if (icmp_pkt->msg_tp == ICMP_REQ)
+		{
+			icmp_pkt->msg_tp = ICMP_REPLY;
+			icmp_pkt->cs = 0;
+			icmp_pkt->cs = checksum((void*) icmp_pkt, len, 0);
 
-		memcpy(frame->addr_dest, frame->addr_src, 6);
-		ip_send(frame, len + sizeof(ip_pkt_ptr));
-		sprintf(str1, "%d.%d.%d.%d-%d.%d.%d.%d icmp request\r\n", ip_pkt->ipaddr_dst[0], ip_pkt->ipaddr_dst[1],
-				ip_pkt->ipaddr_dst[2], ip_pkt->ipaddr_dst[3], ip_pkt->ipaddr_src[0], ip_pkt->ipaddr_src[1],
-				ip_pkt->ipaddr_src[2], ip_pkt->ipaddr_src[3]);
-		HAL_UART_Transmit(&huart1, (uint8_t*) str1, strlen(str1), 0x1000);
+			memcpy(frame->addr_dest, frame->addr_src, 6);
+			ip_send(frame, len + sizeof(ip_pkt_ptr));
+			sprintf(str1, "%d.%d.%d.%d-%d.%d.%d.%d icmp request\r\n", ip_pkt->ipaddr_dst[0], ip_pkt->ipaddr_dst[1],
+					ip_pkt->ipaddr_dst[2], ip_pkt->ipaddr_dst[3], ip_pkt->ipaddr_src[0], ip_pkt->ipaddr_src[1],
+					ip_pkt->ipaddr_src[2], ip_pkt->ipaddr_src[3]);
+			HAL_UART_Transmit(&huart1, (uint8_t*) str1, strlen(str1), 0x1000);
+		}
+		else if (icmp_pkt->msg_tp == ICMP_REPLY)
+		{
+			sprintf(str1, "%d.%d.%d.%d-%d.%d.%d.%d icmp reply\r\n", ip_pkt->ipaddr_src[0], ip_pkt->ipaddr_src[1],
+					ip_pkt->ipaddr_src[2], ip_pkt->ipaddr_src[3], ip_pkt->ipaddr_dst[0], ip_pkt->ipaddr_dst[1],
+					ip_pkt->ipaddr_dst[2], ip_pkt->ipaddr_dst[3]);
+			HAL_UART_Transmit(&huart1, (uint8_t*) str1, strlen(str1), 0x1000);
+		}
 	}
-
 	return res;
 }
+//--------------------------------------------------
+uint8_t icmp_request(uint8_t *ip_addr)
+{
+	uint8_t res = 0;
+	uint16_t len;
+	enc28j60_frame_ptr *frame = (void*) net_buf;
+	ip_pkt_ptr *ip_pkt = (void*) (frame->data);
+	icmp_pkt_ptr *icmp_pkt = (void*) ip_pkt->data;
+
+	//Fill in the ICMP-packet header
+	icmp_pkt->msg_tp = 8;
+	icmp_pkt->msg_cd = 0;
+	icmp_pkt->id = be16toword(1);
+	icmp_pkt->num = be16toword(ping_cnt);
+	ping_cnt++;
+	strcpy((char*) icmp_pkt->data, ICMP_REQUEST_DATA);
+	icmp_pkt->cs = 0;
+	len = strlen((char*) icmp_pkt->data) + sizeof(icmp_pkt_ptr);
+	icmp_pkt->cs = checksum((void*) icmp_pkt, len, 0);
+
+	//Fill in the IP-packet header
+	len += sizeof(ip_pkt_ptr);
+	ip_pkt->len = be16toword(len);
+	ip_pkt->id = 0;
+	ip_pkt->ts = 0;
+	ip_pkt->verlen = 0x45;
+	ip_pkt->fl_frg_of = 0;
+	ip_pkt->ttl = 128;
+	ip_pkt->cs = 0;
+	ip_pkt->prt = IP_ICMP;
+	memcpy(ip_pkt->ipaddr_dst, ip_addr, 4);
+	memcpy(ip_pkt->ipaddr_src, ipaddr, 4);
+	ip_pkt->cs = checksum((void*) ip_pkt, sizeof(ip_pkt_ptr), 0);
+
+	//Fill in the Ethernet-frame
+	memcpy(frame->addr_src, macaddr, 6);
+	frame->type = ETH_IP;
+	enc28j60_packetSend((void*) frame, len + sizeof(enc28j60_frame_ptr));
+	return res;
+}
+
 //--------------------------------------------------
 void UART1_RxCpltCallback(void)
 {
@@ -284,6 +350,12 @@ void UART1_RxCpltCallback(void)
 	else if (b == 'u')
 	{
 		usartprop.is_ip = 2; //attempt status to send UDP-packet
+		net_cmd();
+	}
+	else if (b == 'p')
+
+	{
+		usartprop.is_ip = 4; //attempt status to send ICMP-packet
 		net_cmd();
 	}
 	else

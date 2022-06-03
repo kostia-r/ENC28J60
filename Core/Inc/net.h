@@ -14,9 +14,8 @@
 #include <stdio.h>
 #include "enc28j60.h"
 //--------------------------------------------------
-#define IP_ADDR {192,168,0,102}
-#define MAC_BROADCAST {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF}
-#define MAC_NULL {0x00,0x00,0x00,0x00,0x00,0x00} 
+#define MAC_BROADCAST 		{0xFF,0xFF,0xFF,0xFF,0xFF,0xFF}
+#define MAC_NULL 				{0x00,0x00,0x00,0x00,0x00,0x00}
 //--------------------------------------------------
 typedef struct enc28j60_frame
 {
@@ -99,5 +98,6 @@ uint8_t ip_send(enc28j60_frame_ptr *frame, uint16_t len);
 //--------------------------------------------------
 #include "arp.h"
 #include "udp.h"
+#include "user_conf.h"
 //--------------------------------------------------
 #endif /* NET_H_ */

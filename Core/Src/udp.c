@@ -19,7 +19,7 @@ uint8_t udp_send(uint8_t *ip_addr, uint16_t port)
 	udp_pkt_ptr *udp_pkt = (void*) (ip_pkt->data);
 	udp_pkt->port_dst = be16toword(port);
 	udp_pkt->port_src = be16toword(LOCAL_PORT);
-	strcpy((char*) udp_pkt->data, "UDP Reply:\r\nHello to UDP Client!!!\r\n");
+	strcpy((char*) udp_pkt->data, UDP_CLIENT_REPLY_DATA);
 	len = strlen((char*) udp_pkt->data) + sizeof(udp_pkt_ptr);
 	udp_pkt->len = be16toword(len);
 	udp_pkt->cs = 0;
@@ -44,7 +44,7 @@ uint8_t udp_reply(enc28j60_frame_ptr *frame, uint16_t len)
 	port = udp_pkt->port_dst;
 	udp_pkt->port_dst = udp_pkt->port_src;
 	udp_pkt->port_src = port;
-	strcpy((char*) udp_pkt->data, "UDP Reply:\r\nHello from UDP Server to UDP Client!!!\r\n");
+	strcpy((char*) udp_pkt->data, UDP_SERVER_REPLY_DATA);
 	len = strlen((char*) udp_pkt->data) + sizeof(udp_pkt_ptr);
 	udp_pkt->len = be16toword(len);
 	udp_pkt->cs = 0;

@@ -8,6 +8,8 @@
 //--------------------------------------------------
 extern UART_HandleTypeDef huart1;
 extern uint8_t ipaddr[4];
+extern uint8_t ipgate[4];
+extern uint8_t ipmask[4];
 extern uint8_t macaddr[6];
 extern char str1[60];
 extern uint32_t clock_cnt; //second counter
@@ -80,7 +82,21 @@ void arp_send(enc28j60_frame_ptr *frame)
 uint8_t arp_request(uint8_t *ip_addr)
 {
 	uint8_t i, j;
+	uint8_t ip[4];
+	uint8_t iptemp = 0;
+
+	for (i = 0; i < 4; i++)
+	{
+		iptemp += (ip_addr[i] ^ ipaddr[i]) & ipmask[i];
+	}
+
 	enc28j60_frame_ptr *frame = (void*) net_buf;
+
+	//check if address belongs to local network
+	if (iptemp == 0)
+		memcpy(ip, ip_addr, 4);
+	else
+		memcpy(ip, ipgate, 4);
 
 	for (j = 0; j < 5; j++)
 	{
@@ -88,7 +104,7 @@ uint8_t arp_request(uint8_t *ip_addr)
 		{
 			memset(arp_rec + (sizeof(arp_record_ptr) * j), 0, sizeof(arp_record_ptr));
 		}
-		if (!memcmp(arp_rec[j].ipaddr, ip_addr, 4))
+		if (!memcmp(arp_rec[j].ipaddr, ip, 4))
 		{
 			for (i = 0; i < 5; i++)
 			{
@@ -99,7 +115,7 @@ uint8_t arp_request(uint8_t *ip_addr)
 				HAL_UART_Transmit(&huart1, (uint8_t*) str1, strlen(str1), 0x1000);
 			}
 			memcpy(frame->addr_dest, arp_rec[j].macaddr, 6);
-			if (usartprop.is_ip == 3)
+			if ((usartprop.is_ip == 3) || (usartprop.is_ip == 5)) //UDP or ICMP packet sending status
 			{
 				net_cmd();
 			}
@@ -115,7 +131,7 @@ uint8_t arp_request(uint8_t *ip_addr)
 	memcpy(msg->macaddr_src, macaddr, 6);
 	memcpy(msg->ipaddr_src, ipaddr, 4);
 	memcpy(msg->macaddr_dst, macnull, 6);
-	memcpy(msg->ipaddr_dst, ip_addr, 4);
+	memcpy(msg->ipaddr_dst, ip, 4);
 	memcpy(frame->addr_dest, macbroadcast, 6);
 	memcpy(frame->addr_src, macaddr, 6);
 	frame->type = ETH_ARP;
