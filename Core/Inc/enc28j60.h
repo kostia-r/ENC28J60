@@ -4,8 +4,8 @@
  *  Created on: Jun 1, 2022
  *      Author: U30JC
  */
-#ifndef INC_ENC28J60_H_
-#define INC_ENC28J60_H_
+#ifndef ENC28J60_H_
+#define ENC28J60_H_
 //--------------------------------------------------
 #include "stm32f4xx_hal.h"
 #include <string.h>
@@ -16,8 +16,8 @@
 #define CS_PIN GPIO_PIN_4
 #define SS_SELECT() HAL_GPIO_WritePin(CS_GPIO_PORT, CS_PIN, GPIO_PIN_RESET)
 #define SS_DESELECT() HAL_GPIO_WritePin(CS_GPIO_PORT, CS_PIN, GPIO_PIN_SET)
-#define LD_ON HAL_GPIO_WritePin(GPIOA, GPIO_PIN_2, GPIO_PIN_RESET)
-#define LD_OFF HAL_GPIO_WritePin(GPIOA, GPIO_PIN_2, GPIO_PIN_SET)
+//#define LD_ON HAL_GPIO_WritePin(GPIOA, GPIO_PIN_2, GPIO_PIN_RESET)
+//#define LD_OFF HAL_GPIO_WritePin(GPIOA, GPIO_PIN_2, GPIO_PIN_SET)
 //--------------------------------------------------
 #define ENC28J60_MAXFRAME 512
 #define MAC_ADDR   {0x00,0x15,0x42,0xBF,0xF0,0x51}
@@ -60,13 +60,14 @@
 #define MIWR            (0x16|0x40|0x80)
 //--------------------------------------------------
 // Bank 3 registers
-#define MAADR1           (0x00|0x60|0x80)
-#define MAADR0           (0x01|0x60|0x80)
-#define MAADR3           (0x02|0x60|0x80)
-#define MAADR2           (0x03|0x60|0x80)
-#define MAADR5           (0x04|0x60|0x80)
-#define MAADR4           (0x05|0x60|0x80)
-#define MISTAT           (0x0A|0x60|0x80)
+#define MAADR1          (0x00|0x60|0x80)
+#define MAADR0          (0x01|0x60|0x80)
+#define MAADR3          (0x02|0x60|0x80)
+#define MAADR2          (0x03|0x60|0x80)
+#define MAADR5          (0x04|0x60|0x80)
+#define MAADR4          (0x05|0x60|0x80)
+#define MISTAT          (0x0A|0x60|0x80)
+#define ECOCON			(0x15|0x60)
 //--------------------------------------------------
 #define ERXFCON_UCEN     0x80
 #define ERXFCON_ANDOR    0x40
@@ -178,4 +179,4 @@ void enc28j60_ini(void);
 uint16_t enc28j60_packetReceive(uint8_t *buf, uint16_t buflen);
 void enc28j60_packetSend(uint8_t *buf, uint16_t buflen);
 //--------------------------------------------------
-#endif /* INC_ENC28J60_H_ */
+#endif /* ENC28J60_H_ */

@@ -12,6 +12,9 @@ extern uint8_t macaddr[6];
 uint8_t net_buf[ENC28J60_MAXFRAME];
 uint8_t ipaddr[4] = IP_ADDR;
 char str1[60] = { 0 };
+extern char str[20];
+uint32_t clock_cnt = 0;
+USART_prop_ptr usartprop;
 //--------------------------------------------------
 uint8_t arp_read(enc28j60_frame_ptr *frame, uint16_t len);
 void arp_send(enc28j60_frame_ptr *frame);
@@ -21,55 +24,11 @@ uint8_t icmp_read(enc28j60_frame_ptr *frame, uint16_t len);
 //--------------------------------------------------
 void net_ini(void)
 {
+	usartprop.usart_buf[0] = 0;
+	usartprop.usart_cnt = 0;
+	usartprop.is_ip = 0;
+	HAL_UART_Transmit(&huart1, (uint8_t*) "123456\r\n", 8, 0x1000);
 	enc28j60_ini();
-}
-
-//--------------------------------------------------
-uint8_t arp_read(enc28j60_frame_ptr *frame, uint16_t len)
-{
-	uint8_t res = 0;
-	arp_msg_ptr *msg = (void*) (frame->data);
-
-	if (len >= sizeof(arp_msg_ptr))
-	{
-		if ((msg->net_tp == ARP_ETH) && (msg->proto_tp == ARP_IP))
-		{
-			if ((msg->op == ARP_REQUEST) && (!memcmp(msg->ipaddr_dst, ipaddr, 4)))
-			{
-				sprintf(str1, "\r\nrequest\r\nmac_src %02X:%02X:%02X:%02X:%02X:%02X\r\n", msg->macaddr_src[0],
-						msg->macaddr_src[1], msg->macaddr_src[2], msg->macaddr_src[3], msg->macaddr_src[4],
-						msg->macaddr_src[5]);
-				HAL_UART_Transmit(&huart1, (uint8_t*) str1, strlen(str1), 0x1000);
-
-				sprintf(str1, "ip_src %d.%d.%d.%d\r\n", msg->ipaddr_src[0], msg->ipaddr_src[1], msg->ipaddr_src[2],
-						msg->ipaddr_src[3]);
-				HAL_UART_Transmit(&huart1, (uint8_t*) str1, strlen(str1), 0x1000);
-
-				sprintf(str1, "mac_dst %02X:%02X:%02X:%02X:%02X:%02X\r\n", msg->macaddr_dst[0], msg->macaddr_dst[1],
-						msg->macaddr_dst[2], msg->macaddr_dst[3], msg->macaddr_dst[4], msg->macaddr_dst[5]);
-				HAL_UART_Transmit(&huart1, (uint8_t*) str1, strlen(str1), 0x1000);
-
-				sprintf(str1, "ip_dst %d.%d.%d.%d\r\n", msg->ipaddr_dst[0], msg->ipaddr_dst[1], msg->ipaddr_dst[2],
-						msg->ipaddr_dst[3]);
-				HAL_UART_Transmit(&huart1, (uint8_t*) str1, strlen(str1), 0x1000);
-
-				res = 1;
-			}
-		}
-	}
-	return res;
-}
-
-//--------------------------------------------------
-void arp_send(enc28j60_frame_ptr *frame)
-{
-	arp_msg_ptr *msg = (void*) (frame->data);
-	msg->op = ARP_REPLY;
-	memcpy(msg->macaddr_dst, msg->macaddr_src, 6);
-	memcpy(msg->macaddr_src, macaddr, 6);
-	memcpy(msg->ipaddr_dst, msg->ipaddr_src, 4);
-	memcpy(msg->ipaddr_src, ipaddr, 4);
-	eth_send(frame, sizeof(arp_msg_ptr));
 }
 
 //--------------------------------------------------
@@ -133,13 +92,39 @@ uint8_t ip_send(enc28j60_frame_ptr *frame, uint16_t len)
 	ip_pkt->cs = checksum((void*) ip_pkt, sizeof(ip_pkt_ptr));
 
 	//sending frame
-	eth_send(frame,len);
+	eth_send(frame, len);
 	return res;
+}
+
+//-----------------------------------------------
+//Convert string IP-value to 32-bits integer
+void ip_extract(char *ip_str, uint8_t len, uint8_t *ipextr)
+{
+	uint8_t offset = 0;
+	uint8_t i;
+	char ss2[5] = { 0 };
+	char *ss1;
+	int ch = '.';
+
+	for (i = 0; i < 3; i++)
+	{
+		ss1 = strchr(ip_str, ch);
+		offset = ss1 - ip_str + 1;
+		strncpy(ss2, ip_str, offset);
+		ss2[offset] = 0;
+		ipextr[i] = atoi(ss2);
+		ip_str += offset;
+		len -= offset;
+	}
+	strncpy(ss2, ip_str, len);
+	ss2[len] = 0;
+	ipextr[3] = atoi(ss2);
 }
 
 //--------------------------------------------------
 void eth_read(enc28j60_frame_ptr *frame, uint16_t len)
 {
+	uint8_t res = 0;
 	if (len > sizeof(enc28j60_frame_ptr))
 	{
 		if (frame->type == ETH_ARP)
@@ -149,13 +134,16 @@ void eth_read(enc28j60_frame_ptr *frame, uint16_t len)
 					frame->addr_src[5], frame->addr_dest[0], frame->addr_dest[1], frame->addr_dest[2],
 					frame->addr_dest[3], frame->addr_dest[4], frame->addr_dest[5], len);
 			HAL_UART_Transmit(&huart1, (uint8_t*) str1, strlen(str1), 0x1000);
-
-			if (arp_read(frame, len - sizeof(enc28j60_frame_ptr)))
+			res = arp_read(frame, len - sizeof(enc28j60_frame_ptr));
+			if (res == 1)
 			{
 				arp_send(frame);
 			}
+			else if (res == 2)
+			{
+				arp_table_fill(frame);
+			}
 		}
-
 		if (frame->type == ETH_IP)
 		{
 			sprintf(str1, "%02X:%02X:%02X:%02X:%02X:%02X-%02X:%02X:%02X:%02X:%02X:%02X; %d; ip\r\n", frame->addr_src[0],
@@ -163,7 +151,6 @@ void eth_read(enc28j60_frame_ptr *frame, uint16_t len)
 					frame->addr_dest[0], frame->addr_dest[1], frame->addr_dest[2], frame->addr_dest[3],
 					frame->addr_dest[4], frame->addr_dest[5], len);
 			HAL_UART_Transmit(&huart1, (uint8_t*) str1, strlen(str1), 0x1000);
-
 			ip_read(frame, len - sizeof(ip_pkt_ptr));
 		}
 	}
@@ -181,19 +168,31 @@ void eth_send(enc28j60_frame_ptr *frame, uint16_t len)
 void net_pool(void)
 {
 	uint16_t len;
+	uint8_t ip[4] = { 0 };
+
 	enc28j60_frame_ptr *frame = (void*) net_buf;
 
 	while ((len = enc28j60_packetReceive(net_buf, sizeof(net_buf))) > 0)
 	{
 		eth_read(frame, len);
 	}
+
+	if (usartprop.is_ip == 1) //ARP-request sending status
+	{
+		HAL_UART_Transmit(&huart1, usartprop.usart_buf, usartprop.usart_cnt, 0x1000);
+		HAL_UART_Transmit(&huart1, (uint8_t*) "\r\n", 2, 0x1000);
+		ip_extract((char*) usartprop.usart_buf, usartprop.usart_cnt, ip);
+		arp_request(ip);
+		usartprop.is_ip = 0;
+		usartprop.usart_cnt = 0;
+	}
 }
 //--------------------------------------------------
 uint8_t icmp_read(enc28j60_frame_ptr *frame, uint16_t len)
 {
 	uint8_t res = 0;
-	ip_pkt_ptr *ip_pkt = (void*) frame->data;
-	icmp_pkt_ptr *icmp_pkt = (void*) ip_pkt->data;
+	ip_pkt_ptr *ip_pkt = (void*) (frame->data);
+	icmp_pkt_ptr *icmp_pkt = (void*) (ip_pkt->data);
 
 	//Filter the packet by message length and type - echo request
 	if ((len >= sizeof(icmp_pkt_ptr)) && (icmp_pkt->msg_tp == ICMP_REQ))
@@ -209,4 +208,32 @@ uint8_t icmp_read(enc28j60_frame_ptr *frame, uint16_t len)
 	}
 
 	return res;
+}
+//--------------------------------------------------
+void UART1_RxCpltCallback(void)
+{
+	uint8_t b;
+	b = str[0];
+
+	//check if the buffer length is exceeded
+	if (usartprop.usart_cnt > 20)
+	{
+		usartprop.usart_cnt = 0;
+	}
+	else if (b == 'a')
+	{
+		usartprop.is_ip = 1; //ARP-request sending status
+	}
+	else
+	{
+		usartprop.usart_buf[usartprop.usart_cnt] = b;
+		usartprop.usart_cnt++;
+	}
+	HAL_UART_Receive_IT(&huart1, (uint8_t*) str, 1);
+}
+
+//--------------------------------------------------
+void TIM_PeriodElapsedCallback(void)
+{
+	clock_cnt++;
 }

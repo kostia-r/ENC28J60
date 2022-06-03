@@ -6,16 +6,12 @@
  */
 #include "enc28j60.h"
 //--------------------------------------------------
-
 extern UART_HandleTypeDef huart1;
 extern SPI_HandleTypeDef hspi1;
-
 //--------------------------------------------------
-
 static uint8_t Enc28j60Bank;
 static int gNextPacketPtr;
 uint8_t macaddr[6] = MAC_ADDR;
-
 //--------------------------------------------------
 static void Error(void);
 static uint8_t SPIx_WriteRead(uint8_t Byte);
@@ -32,11 +28,22 @@ static void enc28j60_writePhy(uint8_t address, uint16_t data);
 static void enc28j60_writeBuf(uint16_t len, uint8_t *data);
 
 //--------------------------------------------------
+__STATIC_INLINE void DelayMicro(__IO uint32_t micros)
+{
+	micros *= (SystemCoreClock / 1000000) / 5;
+
+	/* Wait till done */
+	while (micros--)
+		;
+}
+
+//--------------------------------------------------
 void enc28j60_ini(void)
 {
-	LD_OFF;
-	enc28j60_writeOp(ENC28J60_SOFT_RESET, 0, ENC28J60_SOFT_RESET);
+	//LD_OFF;
+	//enc28j60_writeOp(ENC28J60_SOFT_RESET, 0, ENC28J60_SOFT_RESET);
 	HAL_Delay(2);
+
 	//check if reset is done
 	while (!enc28j60_readOp(ENC28J60_READ_CTRL_REG, ESTAT) & ESTAT_CLKRDY)
 		;
@@ -75,12 +82,16 @@ void enc28j60_ini(void)
 	enc28j60_SetBank(ECON1);
 	enc28j60_writeOp(ENC28J60_BIT_FIELD_SET, EIE, EIE_INTIE | EIE_PKTIE);
 	enc28j60_writeOp(ENC28J60_BIT_FIELD_SET, ECON1, ECON1_RXEN); //allow packets to be received
+
+	//Enable frequency prescaller 2, i.e. 12,5 MHz
+	enc28j60_writeRegByte(ECOCON, 0x02);
+	DelayMicro(15);
 }
 
 //--------------------------------------------------
 static void Error(void)
 {
-	LD_ON;
+	//LD_ON;
 }
 
 //--------------------------------------------------
@@ -260,9 +271,12 @@ void enc28j60_packetSend(uint8_t *buf, uint16_t buflen)
 			enc28j60_writeOp(ENC28J60_BIT_FIELD_CLR, ECON1, ECON1_TXRST);
 		}
 	}
-	enc28j60_writeReg(EWRPT,TXSTART_INIT);
-	enc28j60_writeReg(ETXND,TXSTART_INIT+buflen);
-	enc28j60_writeBuf(1,(uint8_t*)"\x00");
-	enc28j60_writeBuf(buflen,buf);
-	enc28j60_writeOp(ENC28J60_BIT_FIELD_SET,ECON1,ECON1_TXRTS);
+	enc28j60_writeReg(EWRPT, TXSTART_INIT);
+	enc28j60_writeReg(ETXND, TXSTART_INIT + buflen);
+	enc28j60_writeBuf(1, (uint8_t*) "\x00");
+	enc28j60_writeBuf(buflen, buf);
+	enc28j60_writeOp(ENC28J60_BIT_FIELD_SET, ECON1, ECON1_TXRTS);
+
+	//small delay, because without, it doesn't in overload networks
+	HAL_Delay(1);
 }

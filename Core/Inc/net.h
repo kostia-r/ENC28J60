@@ -4,8 +4,8 @@
  *  Created on: Jun 1, 2022
  *      Author: U30JC
  */
-#ifndef INC_NET_H_
-#define INC_NET_H_
+#ifndef NET_H_
+#define NET_H_
 //--------------------------------------------------
 #include "stm32f4xx_hal.h"
 #include <string.h>
@@ -15,6 +15,8 @@
 #include "enc28j60.h"
 //--------------------------------------------------
 #define IP_ADDR {192,168,0,102}
+#define MAC_BROADCAST {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF}
+#define MAC_NULL {0x00,0x00,0x00,0x00,0x00,0x00} 
 //--------------------------------------------------
 typedef struct enc28j60_frame
 {
@@ -52,17 +54,25 @@ typedef struct ip_pkt
 	uint8_t data[]; //data
 } ip_pkt_ptr;
 //--------------------------------------------------
-typedef struct icmp_pkt{
-uint8_t msg_tp;//service type
-uint8_t msg_cd;//message code
-uint16_t cs;//header checksum
-uint16_t id;//packet ID
-uint16_t num;//packet number
-uint8_t data[];//data
+typedef struct icmp_pkt
+{
+	uint8_t msg_tp; //service type
+	uint8_t msg_cd; //message code
+	uint16_t cs; //header checksum
+	uint16_t id; //packet ID
+	uint16_t num; //packet number
+	uint8_t data[]; //data
 } icmp_pkt_ptr;
 //--------------------------------------------------
+typedef struct USART_prop
+{
+	uint8_t usart_buf[20];
+	uint8_t usart_cnt;
+	uint8_t is_ip;
+} USART_prop_ptr;
+//--------------------------------------------------
 #define be16toword(a) ((((a)>>8)&0xff)|(((a)<<8)&0xff00)) //convert big endian to little endian
-
+//--------------------------------------------------
 #define ETH_ARP be16toword(0x0806)
 #define ETH_IP be16toword(0x0800)
 //--------------------------------------------------
@@ -80,5 +90,10 @@ uint8_t data[];//data
 //--------------------------------------------------
 void net_ini(void);
 void net_pool(void);
+void eth_send(enc28j60_frame_ptr *frame, uint16_t len);
+void UART1_RxCpltCallback(void);
+void TIM_PeriodElapsedCallback(void);
 //--------------------------------------------------
-#endif /* INC_NET_H_ */
+#include "arp.h"
+//--------------------------------------------------
+#endif /* NET_H_ */
