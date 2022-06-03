@@ -89,11 +89,14 @@ typedef struct USART_prop
 #define ICMP_REPLY 0
 //--------------------------------------------------
 void net_ini(void);
-void net_pool(void);
+void net_poll(void);
 void eth_send(enc28j60_frame_ptr *frame, uint16_t len);
 void UART1_RxCpltCallback(void);
 void TIM_PeriodElapsedCallback(void);
+uint16_t checksum(uint8_t *ptr, uint16_t len, uint8_t type);
+uint8_t ip_send(enc28j60_frame_ptr *frame, uint16_t len);
 //--------------------------------------------------
 #include "arp.h"
+#include "udp.h"
 //--------------------------------------------------
 #endif /* NET_H_ */

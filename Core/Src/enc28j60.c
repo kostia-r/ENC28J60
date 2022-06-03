@@ -41,7 +41,7 @@ __STATIC_INLINE void DelayMicro(__IO uint32_t micros)
 void enc28j60_ini(void)
 {
 	//LD_OFF;
-	//enc28j60_writeOp(ENC28J60_SOFT_RESET, 0, ENC28J60_SOFT_RESET);
+	enc28j60_writeOp(ENC28J60_SOFT_RESET, ENC28J60_SOFT_RESET, 0);
 	HAL_Delay(2);
 
 	//check if reset is done
@@ -276,7 +276,4 @@ void enc28j60_packetSend(uint8_t *buf, uint16_t buflen)
 	enc28j60_writeBuf(1, (uint8_t*) "\x00");
 	enc28j60_writeBuf(buflen, buf);
 	enc28j60_writeOp(ENC28J60_BIT_FIELD_SET, ECON1, ECON1_TXRTS);
-
-	//small delay, because without, it doesn't in overload networks
-	HAL_Delay(1);
 }
