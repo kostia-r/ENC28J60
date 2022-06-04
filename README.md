@@ -1,6 +1,4 @@
-Networking. ENC28J60
-
--------------------------------
+# Networking. ENC28J60
 
 1. USART terminal command(f.e.PuTTY): plink -serial COM3 -sercfg 115200,8,n,1,N
 
@@ -21,3 +19,13 @@ Networking. ENC28J60
    #define UDP_SERVER_REPLY_DATA	("UDP Reply:\r\nHello from UDP Server to UDP Client!!!\r\n")
    
 6. plink and NetCat look in ""Win_Tools" path.
+
+# Connections
+INT - PA2
+SO - PA6
+SI - PA7
+SCK - PA5
+CS - PA4
+RESET - NRST
+VCC - VCC 3.3V
+GND - GND
